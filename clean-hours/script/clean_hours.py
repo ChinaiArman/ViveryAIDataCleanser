@@ -60,7 +60,6 @@ from keys import CLEAN_HOURS_KEY as OAI_API
 # MISC CONSTANTS
 INT_TO_DAY_OF_MONTH = {"1": ["1st", "First"], "2": ["2nd", "Second"], "3": ["3rd", "Third"], "4": ["4th", "Fourth"], "5": ["5th", "Fifth"], "": ""}
 DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-DAYS_OF_WEEK_ABBREVIATED = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 HOUR_TYPES = ["Weekly", "Every Other Week", "Day of Month", "Week of Month", "Call for Information"]
 UNCLEANED_HOURS_COLUMN = "Hours Uncleaned"
 INVALID_CHARACTERS = ""
@@ -159,28 +158,12 @@ def call_oai(prompt: str) -> str:
 def postprocess_string(case: str) -> str:
     """
     """
-    case = case.split(",")
-    if len(case) == 13:
-        case.insert(8, "")
-    try:
-        if case[0] == "" and case[1] == "" and case[2] == "" and (case[5] != "" or case[7] != ""):
-            case = case[0:14]
-            if case[5] != "":
-                case[7] = case[5]
-                case[5] = ""
-            case[10] = "Call for Information"
-    except:
-        pass
-    return ",".join(case)
+    return case
 
 
 def preprocess_string(case: str) -> str:
     """
     """
-    case = case.strip()
-    for day in DAYS_OF_WEEK_ABBREVIATED:
-        regex = re.compile(rf"\b{day}\b", re.IGNORECASE)
-        case = regex.sub(DAYS_OF_WEEK[DAYS_OF_WEEK_ABBREVIATED.index(day)], case)
     return case
 
 
@@ -218,16 +201,16 @@ def format_hours_iteratively(id_hours_dict: dict) -> dict:
     for key, value in id_hours_dict.items():
         value = value.replace("/", ", ")
         split_value = value.split(";")
-        response = []
-        for value in split_value:
-            value = preprocess_string(value)
-            oai_response = call_oai(value)
-            oai_response = oai_response.split(";")
-            for entry in oai_response:
-                entry = postprocess_string(entry)
-                if entry.count(",") == 13:
-                    response.append(entry)
-        response = list(set(response))
+        # response = []
+        # for value in split_value:
+        #     value = preprocess_string(value)
+        #     oai_response = call_oai(value)
+        #     oai_response = oai_response.split(";")
+        #     for entry in oai_response:
+        #         entry = postprocess_string(entry)
+        #         response.append(entry)
+        # response = list(set(response))
+        response = map(lambda x: postprocess_string(call_oai(preprocess_string(x)), split_value))
         new_value = ";".join(response)
         cleaned_hours_dict[key] = new_value
     
