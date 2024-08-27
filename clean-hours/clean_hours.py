@@ -60,7 +60,8 @@ from keys import CLEAN_HOURS_KEY as OAI_API
 # MISC CONSTANTS
 INT_TO_DAY_OF_MONTH = {"1": ["1st", "First"], "2": ["2nd", "Second"], "3": ["3rd", "Third"], "4": ["4th", "Fourth"], "5": ["5th", "Fifth"], "": ""}
 DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-HOUR_TYPES = ["Weekly", "Every Other Week", "Day of Month", "Week of Month"]
+DAYS_OF_WEEK_ABBREVIATED = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+HOUR_TYPES = ["Weekly", "Every Other Week", "Day of Month", "Week of Month", "Call for Information"]
 UNCLEANED_HOURS_COLUMN = "Hours Uncleaned"
 INVALID_CHARACTERS = ""
 
@@ -155,6 +156,34 @@ def call_oai(prompt: str) -> str:
     return response["choices"][0]["text"]
 
 
+def postprocess_string(case: str) -> str:
+    """
+    """
+    case = case.split(",")
+    if len(case) == 13:
+        case.insert(8, "")
+    try:
+        if case[0] == "" and case[1] == "" and case[2] == "" and (case[5] != "" or case[7] != ""):
+            case = case[0:14]
+            if case[5] != "":
+                case[7] = case[5]
+                case[5] = ""
+            case[10] = "Call for Information"
+    except:
+        pass
+    return ",".join(case)
+
+
+def preprocess_string(case: str) -> str:
+    """
+    """
+    case = case.strip()
+    for day in DAYS_OF_WEEK_ABBREVIATED:
+        regex = re.compile(rf"\b{day}\b", re.IGNORECASE)
+        case = regex.sub(DAYS_OF_WEEK[DAYS_OF_WEEK_ABBREVIATED.index(day)], case)
+    return case
+
+
 def format_hours_iteratively(id_hours_dict: dict) -> dict:
     """
     Creates a dictionary of `Program External IDs` and their formatted-hour counterparts. 
@@ -187,10 +216,19 @@ def format_hours_iteratively(id_hours_dict: dict) -> dict:
     cleaned_hours_dict = {}
 
     for key, value in id_hours_dict.items():
-        value = value.replace("/", ",")
+        value = value.replace("/", ", ")
         split_value = value.split(";")
-        new_value = map(call_oai, split_value)
-        new_value = ";".join(new_value)
+        response = []
+        for value in split_value:
+            value = preprocess_string(value)
+            oai_response = call_oai(value)
+            oai_response = oai_response.split(";")
+            for entry in oai_response:
+                entry = postprocess_string(entry)
+                if entry.count(",") == 13:
+                    response.append(entry)
+        response = list(set(response))
+        new_value = ";".join(response)
         cleaned_hours_dict[key] = new_value
     
     return cleaned_hours_dict
@@ -365,7 +403,7 @@ def test_valid_day_of_week(_: any, cleaned_hours_dict: dict, is_valid_dict: dict
         for value in list_of_entries:
             value = value.split(",")
             try:
-                is_valid = value[0] in DAYS_OF_WEEK and is_valid
+                is_valid = value[0] in DAYS_OF_WEEK or (value[0] == "" and value[10] == "Call for Information") and is_valid
             except:
                 is_valid
 
@@ -469,10 +507,9 @@ def test_valid_open_closed_hours(_: dict, cleaned_hours_dict: dict, is_valid_dic
         for value in list_of_entries:
             value = value.split(",")
             try:
-                is_valid = value[1] != "" and value[2] != "" and is_valid
                 is_open_hour_valid = re.search(time_regex, value[1])
                 is_closed_hour_valid = re.search(time_regex, value[2])
-                is_valid = is_open_hour_valid != None and is_closed_hour_valid != None and is_valid
+                is_valid = (is_open_hour_valid != None or value[1] == "") and (is_closed_hour_valid != None or value[2] == "") and is_valid
             except:
                 is_valid = False
 
@@ -527,6 +564,8 @@ def test_close_hour_greater_than_open_hour(_: dict, cleaned_hours_dict: dict, is
             value = value.split(",")
             try:
                 is_valid = datetime.strptime(value[2], "%H:%M") > datetime.strptime(value[1], "%H:%M") and is_valid
+            except ValueError:
+                is_valid = value[10] == "Call for Information" and is_valid
             except:
                 is_valid = False
 
@@ -704,6 +743,26 @@ def test_weekly_formatting(_: dict, cleaned_hours_dict: dict, is_valid_dict: dic
             try:
                 if value[10] == "Weekly" or value[10] == "Every Other Week":
                     is_valid = value[8] == "" and value[9] == "" and is_valid
+            except:
+                is_valid = False
+
+        is_valid_dict[key] = is_valid_dict[key] and is_valid
+
+    return is_valid_dict
+
+
+def test_call_for_information_formatting(_: dict, cleaned_hours_dict: dict, is_valid_dict: dict) -> dict:
+    """
+    """
+    for key, value in cleaned_hours_dict.items():
+        is_valid = True
+        list_of_entries = value.split(";")
+
+        for value in list_of_entries:
+            value = value.split(",")
+            try:
+                if value[10] == "Call for Information":
+                    is_valid = len("".join(value[0:7])) == 0 and len("".join(value[8:10])) == 0 and len("".join(value[11:])) == 0 and is_valid
             except:
                 is_valid = False
 
@@ -948,6 +1007,7 @@ if __name__ == "__main__":
         test_close_hour_greater_than_open_hour,
         test_all_null_values_empty_string,
         test_valid_entry_format,
+        test_call_for_information_formatting,
         # test_valid_case_length,
         # test_valid_case_characters
     ]
