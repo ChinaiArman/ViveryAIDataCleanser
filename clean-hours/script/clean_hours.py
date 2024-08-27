@@ -158,13 +158,18 @@ def call_oai(prompt: str) -> str:
 def postprocess_string(case: str) -> str:
     """
     """
-    return case
+    case = case.split(",")
+    if case[7] != "" and "".join(case[0:7]) == "" and "".join(case[8:]) == "":
+        case[10] = "Call for Information"
+    if case[7] == "For information":
+        case[7] = "Call for Information"
+    return ",".join(case)
 
 
 def preprocess_string(case: str) -> str:
     """
     """
-    return case
+    return case.strip().replace("/", ", ")
 
 
 def format_hours_iteratively(id_hours_dict: dict) -> dict:
@@ -201,16 +206,7 @@ def format_hours_iteratively(id_hours_dict: dict) -> dict:
     for key, value in id_hours_dict.items():
         value = value.replace("/", ", ")
         split_value = value.split(";")
-        # response = []
-        # for value in split_value:
-        #     value = preprocess_string(value)
-        #     oai_response = call_oai(value)
-        #     oai_response = oai_response.split(";")
-        #     for entry in oai_response:
-        #         entry = postprocess_string(entry)
-        #         response.append(entry)
-        # response = list(set(response))
-        response = map(lambda x: postprocess_string(call_oai(preprocess_string(x)), split_value))
+        response = map(lambda x: postprocess_string(call_oai(preprocess_string(x))), split_value)
         new_value = ";".join(response)
         cleaned_hours_dict[key] = new_value
     
@@ -388,7 +384,7 @@ def test_valid_day_of_week(_: any, cleaned_hours_dict: dict, is_valid_dict: dict
             try:
                 is_valid = value[0] in DAYS_OF_WEEK or (value[0] == "" and value[10] == "Call for Information") and is_valid
             except:
-                is_valid
+                is_valid = False
 
         is_valid_dict[key] = is_valid_dict[key] and is_valid
 
@@ -489,6 +485,8 @@ def test_valid_open_closed_hours(_: dict, cleaned_hours_dict: dict, is_valid_dic
 
         for value in list_of_entries:
             value = value.split(",")
+            if value[10] == "Call for Information":
+                continue
             try:
                 is_open_hour_valid = re.search(time_regex, value[1])
                 is_closed_hour_valid = re.search(time_regex, value[2])
